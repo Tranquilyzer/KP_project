@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>City Heat Promo</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0b0912; --fg:#f4e9ff; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font-family:"Press Start 2P", monospace; }
+  body { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:16px; box-sizing:border-box; }
+  canvas { height:min(86vh, 1280px); max-width:100%; image-rendering:pixelated; box-shadow:0 0 40px #ff3ea533; }
+  button { font:inherit; font-size:12px; padding:10px 16px; background:#ffcc33; color:#1a1020; border:3px solid #1a1020; box-shadow:4px 4px 0 #ff3ea5; cursor:pointer; }
+</style>
+</head>
+<body>
+<canvas id="out" width="720" height="1280"></canvas>
+<button id="dl">Скачать PNG 720×1280</button>
+<script>
+const W = 180, H = 320, S = 4;
+const lo = document.createElement('canvas'); lo.width = W; lo.height = H;
+const g = lo.getContext('2d');
+let seed = 1337;
+const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+const px = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
+
+// ---------- layout ----------
+const ROAD_L = 40, ROAD_R = 140, CROSS_T = 196, CROSS_B = 228;
+
+// asphalt
+px(0, 0, W, H, '#2b2a35');
+for (let i = 0; i < 2600; i++) px(ri(0, W), ri(0, H), 1, 1, rnd() < .5 ? '#26252f' : '#32313c');
+// patches / cracks
+for (let i = 0; i < 6; i++) { const x = ri(ROAD_L + 4, ROAD_R - 14), y = ri(0, H); px(x, y, ri(6, 12), ri(4, 8), '#24232c'); }
+
+// sidewalks (vertical road)
+function sidewalk(x, y, w, h) {
+  px(x, y, w, h, '#5b5a68');
+  for (let yy = y; yy < y + h; yy += 6) px(x, yy, w, 1, '#4c4b58');
+  for (let xx = x; xx < x + w; xx += 6) px(xx, y, 1, h, '#4c4b58');
+}
+sidewalk(30, 0, 10, CROSS_T); sidewalk(30, CROSS_B, 10, H - CROSS_B);
+sidewalk(140, 0, 10, CROSS_T); sidewalk(140, CROSS_B, 10, H - CROSS_B);
+// sidewalks along cross street
+sidewalk(0, CROSS_T - 8, 30, 8); sidewalk(150, CROSS_T - 8, 30, 8);
+sidewalk(0, CROSS_B, 30, 8); sidewalk(150, CROSS_B, 30, 8);
+// curbs
+[[39, 0, 1, CROSS_T], [140, 0, 1, CROSS_T], [39, CROSS_B, 1, H], [140, CROSS_B, 1, H]].forEach(r => px(...r, '#8a8998'));
+px(0, CROSS_T - 1, 40, 1, '#8a8998'); px(140, CROSS_T - 1, 40, 1, '#8a8998');
+px(0, CROSS_B, 40, 1, '#8a8998'); px(140, CROSS_B, 40, 1, '#8a8998');
+
+// lane markings
+for (const yRange of [[0, CROSS_T - 10], [CROSS_B + 10, H]]) {
+  px(88, yRange[0], 1, yRange[1] - yRange[0], '#e8b931');
+  px(91, yRange[0], 1, yRange[1] - yRange[0], '#e8b931');
+  for (let y = yRange[0]; y < yRange[1]; y += 14) { px(64, y, 1, 7, '#cfcfd8'); px(115, y, 1, 7, '#cfcfd8'); }
+}
+// cross street markings
+for (let x = 0; x < 30; x += 12) px(x, 211, 6, 1, '#cfcfd8');
+for (let x = 152; x < W; x += 12) px(x, 211, 6, 1, '#cfcfd8');
+// crosswalks
+for (let x = ROAD_L + 2; x < ROAD_R - 2; x += 6) { px(x, CROSS_T - 9, 3, 7, '#d8d8e0'); px(x, CROSS_B + 2, 3, 7, '#d8d8e0'); }
+for (let y = CROSS_T + 2; y < CROSS_B - 2; y += 6) { px(31, y, 7, 3, '#d8d8e0'); px(142, y, 7, 3, '#d8d8e0'); }
+// manhole
+px(70, 236, 5, 5, '#1f1e26'); px(71, 237, 3, 3, '#3a3946');
+
+// ---------- buildings (rooftops) ----------
+const roofCols = ['#3b2f4a', '#2f3e4a', '#4a3a2f', '#3a4a35', '#4a2f38', '#363645'];
+const neon = [];
+function building(x, y, w, h, roadSide) {
+  const c = roofCols[ri(0, roofCols.length - 1)];
+  px(x, y, w, h, '#15131c');
+  px(x + 1, y + 1, w - 2, h - 2, c);
+  px(x + 1, y + 1, w - 2, 1, '#ffffff22'); px(x + 1, y + 1, 1, h - 2, '#ffffff18');
+  px(x + 2, y + h - 2, w - 3, 1, '#00000055');
+  // parapet inner line
+  g.strokeStyle = '#00000040'; g.strokeRect(x + 3.5, y + 3.5, w - 7, h - 7);
+  // details
+  const n = ri(1, 3);
+  for (let i = 0; i < n; i++) {
+    const t = ri(0, 2), dx = x + ri(5, Math.max(5, w - 11)), dy = y + ri(5, Math.max(5, h - 11));
+    if (t === 0) { px(dx, dy, 6, 4, '#7d7c88'); px(dx + 1, dy + 1, 4, 2, '#5d5c68'); px(dx + 2, dy + 1, 2, 2, '#2a2933'); }
+    else if (t === 1) { px(dx + 1, dy, 4, 6, '#6b4a33'); px(dx, dy + 1, 6, 4, '#6b4a33'); px(dx + 1, dy + 1, 4, 4, '#8a6244'); px(dx + 2, dy + 2, 2, 2, '#5a3d2a'); }
+    else { px(dx, dy, 5, 5, '#22212a'); px(dx + 1, dy + 1, 3, 3, '#4a4956'); px(dx + 5, dy + 1, 1, 4, '#00000055'); }
+  }
+  if (rnd() < .7) {
+    const col = ['#ff3ea5', '#35e0ff', '#ffcc33', '#9dff4a'][ri(0, 3)];
+    const nx = roadSide === 'r' ? x + w - 2 : x + 1, ny = y + 4, nl = Math.max(4, h - 8);
+    px(nx, ny, 1, nl, col); neon.push([nx, ny, nl, col]);
+  }
+}
+function column(x, w, y0, y1, side) {
+  let y = y0;
+  while (y < y1) { const h = Math.min(ri(26, 52), y1 - y); if (h < 10) break; building(x, y, w, h, side); y += h; }
+}
+column(0, 30, -10, CROSS_T - 8, 'r'); column(0, 30, CROSS_B + 8, H + 10, 'r');
+column(150, 30, -10, CROSS_T - 8, 'l'); column(150, 30, CROSS_B + 8, H + 10, 'l');
+
+// ---------- cars ----------
+const shade = (hex, f) => { const n = parseInt(hex.slice(1), 16); let r = n >> 16, gg = n >> 8 & 255, b = n & 255;
+  const m = v => Math.max(0, Math.min(255, Math.round(f > 0 ? v + (255 - v) * f : v * (1 + f))));
+  return '#' + [m(r), m(gg), m(b)].map(v => v.toString(16).padStart(2, '0')).join(''); };
+const DIMS = { sedan: [12, 24], sports: [12, 22], taxi: [12, 24], police: [12, 24], van: [14, 30], pickup: [13, 27], muscle: [12, 25] };
+const cars = [];
+function car(x, y, type, color, dir) {
+  const [w, h] = DIMS[type];
+  cars.push({ x, y, w, h, type, dir });
+  g.save();
+  const bw = dir % 2 ? h : w, bh = dir % 2 ? w : h;
+  if (dir === 0) g.translate(x, y);
+  if (dir === 1) g.translate(x + bh * 0 + h, y);
+  if (dir === 2) g.translate(x + w, y + h);
+  if (dir === 3) g.translate(x, y + w);
+  g.rotate(dir * Math.PI / 2);
+  drawCarLocal(w, h, type, color);
+  g.restore();
+}
+function drawCarLocal(w, h, type, c) {
+  const dark = '#0d0b12', lt = shade(c, .35), dk = shade(c, -.35), glass = '#1d2a44', glassHi = '#6f8fc0';
+  px(2, 2, w, h, 'rgba(0,0,0,.4)'); // shadow
+  px(1, 0, w - 2, h, dark); px(0, 1, w, h - 2, dark);
+  px(2, 1, w - 4, h - 2, c); px(1, 2, w - 2, h - 4, c);
+  px(1, 2, 1, h - 4, lt); px(w - 2, 2, 1, h - 4, dk);
+  px(-1, 7, 1, 2, dark); px(w, 7, 1, 2, dark); // mirrors
+  let ws = 6, rw = h - 7;
+  if (type === 'sports') ws = 7;
+  if (type === 'van') ws = 3;
+  if (type === 'pickup') { ws = 6; rw = 14; }
+  if (type === 'muscle') ws = 8;
+  // hood line
+  px(3, 2, w - 6, 1, lt);
+  // windshield
+  px(2, ws, w - 4, 3, glass); px(3, ws, 2, 1, glassHi); px(2, ws + 2, w - 4, 1, '#121a2c');
+  // roof
+  const roofTop = ws + 3, roofBot = type === 'pickup' ? rw - 2 : rw - 1;
+  px(2, roofTop, w - 4, roofBot - roofTop, shade(c, .12));
+  px(2, roofTop, 1, roofBot - roofTop, shade(c, .4));
+  // side windows
+  px(1, roofTop, 1, roofBot - roofTop, glass); px(w - 2, roofTop, 1, roofBot - roofTop, '#141d30');
+  if (type !== 'van') { px(2, rw - 1, w - 4, 2, glass); px(3, rw - 1, 1, 1, glassHi); }
+  if (type === 'van') { for (let y = roofTop + 3; y < h - 3; y += 5) px(2, y, w - 4, 1, dk); }
+  if (type === 'pickup') {
+    px(2, rw + 1, w - 4, h - rw - 3, '#1a1820'); px(3, rw + 2, w - 6, h - rw - 5, '#2c2a33');
+    for (let y = rw + 3; y < h - 3; y += 2) px(3, y, w - 6, 1, '#24222b');
+  }
+  if (type === 'sports') { px(Math.floor(w / 2) - 1, 1, 2, h - 2, '#f4f4f4'); px(1, h - 3, w - 2, 1, dark); }
+  if (type === 'muscle') { px(3, 1, 2, h - 2, '#111'); px(w - 5, 1, 2, h - 2, '#111'); px(4, 3, w - 8, 2, '#2a2a2a'); }
+  if (type === 'taxi') {
+    px(Math.floor(w / 2) - 2, roofTop + 3, 4, 2, '#fff7d6'); px(Math.floor(w / 2) - 2, roofTop + 5, 4, 1, '#b08a1a');
+    for (let y = 4; y < h - 3; y += 2) { px(1, y, 1, 1, y % 4 ? '#111' : '#fff'); px(w - 2, y, 1, 1, y % 4 ? '#fff' : '#111'); }
+  }
+  if (type === 'police') {
+    px(2, roofTop, w - 4, roofBot - roofTop, '#e8e8ee');
+    px(2, roofTop + 4, Math.floor((w - 4) / 2), 2, '#ff2a3a'); px(Math.floor(w / 2), roofTop + 4, Math.ceil((w - 4) / 2), 2, '#2a6bff');
+    px(2, 3, w - 4, 2, '#e8e8ee');
+  }
+  // lights
+  px(2, 1, 2, 1, '#fff6c0'); px(w - 4, 1, 2, 1, '#fff6c0');
+  px(2, h - 2, 2, 1, '#ff3040'); px(w - 4, h - 2, 2, 1, '#ff3040');
+}
+// southbound (left lanes) dir 2, northbound (right lanes) dir 0
+car(46, 22, 'van', '#c9c3b5', 2);
+car(71, 56, 'taxi', '#f2c21b', 2);
+car(46, 104, 'sedan', '#3f8a5a', 2);
+car(71, 150, 'muscle', '#d8742b', 2);
+car(46, 250, 'pickup', '#5a6f9c', 2);
+car(71, 272, 'sedan', '#8e2b45', 2);
+car(121, 86, 'sports', '#e2232f', 0);   // getaway car
+car(97, 118, 'police', '#141418', 0);   // chasing
+car(121, 160, 'police', '#141418', 0);
+car(97, 238, 'sedan', '#6d5aa8', 0);
+car(121, 284, 'taxi', '#f2c21b', 0);
+car(4, 214, 'sedan', '#2b9aa0', 1);      // cross street eastbound
+car(156, 199, 'pickup', '#9a8f3a', 3);   // cross street westbound
+
+// lamps
+const lamps = [];
+for (const lx of [34, 145]) for (const ly of [30, 90, 150, 260, 310]) { lamps.push([lx, ly]); px(lx, ly, 2, 2, '#22212a'); px(lx, ly, 1, 1, '#fff2c0'); }
+
+// ---------- night pass ----------
+g.globalCompositeOperation = 'multiply';
+px(0, 0, W, H, '#6a6aa0');
+g.globalCompositeOperation = 'lighter';
+function glow(x, y, r, col, a) {
+  const gr = g.createRadialGradient(x, y, 0, x, y, r);
+  gr.addColorStop(0, col.replace('A', a)); gr.addColorStop(1, col.replace('A', 0));
+  g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
+}
+lamps.forEach(([x, y]) => glow(x + 1, y + 1, 26, 'rgba(255,190,110,A)', .22));
+neon.forEach(([x, y, l, c]) => { const r = parseInt(c.slice(1, 3), 16), gg = parseInt(c.slice(3, 5), 16), b = parseInt(c.slice(5, 7), 16);
+  for (let i = 0; i < l; i += 4) glow(x, y + i, 7, `rgba(${r},${gg},${b},A)`, .14); px(x, y, 1, l, c); });
+cars.forEach(cr => {
+  // headlight cones
+  g.fillStyle = 'rgba(255,240,170,0.10)';
+  const cone = (pts) => { g.beginPath(); g.moveTo(...pts[0]); pts.slice(1).forEach(p => g.lineTo(...p)); g.closePath(); g.fill(); };
+  const { x, y, w, h, dir } = cr;
+  if (dir === 0) cone([[x + 2, y], [x + w - 2, y], [x + w + 6, y - 26], [x - 6, y - 26]]);
+  if (dir === 2) cone([[x + 2, y + h], [x + w - 2, y + h], [x + w + 6, y + h + 26], [x - 6, y + h + 26]]);
+  if (dir === 1) cone([[x + h, y + 2], [x + h, y + w - 2], [x + h + 26, y + w + 6], [x + h + 26, y - 6]]);
+  if (dir === 3) cone([[x, y + 2], [x, y + w - 2], [x - 26, y + w + 6], [x - 26, y - 6]]);
+  // taillights
+  if (dir === 0) glow(x + w / 2, y + h, 7, 'rgba(255,40,50,A)', .25);
+  if (dir === 2) glow(x + w / 2, y, 7, 'rgba(255,40,50,A)', .25);
+  if (cr.type === 'police') {
+    const cy = dir === 0 ? y + 14 : y + h - 14;
+    glow(x + 3, cy, 16, 'rgba(255,30,60,A)', .35); glow(x + w - 3, cy, 16, 'rgba(40,100,255,A)', .35);
+  }
+});
+g.globalCompositeOperation = 'source-over';
+
+// ---------- compose at full res ----------
+const out = document.getElementById('out'), o = out.getContext('2d');
+o.imageSmoothingEnabled = false;
+o.drawImage(lo, 0, 0, W * S, H * S);
+
+function vgrad(y0, y1, a0, a1) {
+  const gr = o.createLinearGradient(0, y0, 0, y1);
+  gr.addColorStop(0, `rgba(10,7,22,${a0})`); gr.addColorStop(1, `rgba(10,7,22,${a1})`);
+  o.fillStyle = gr; o.fillRect(0, y0, 720, y1 - y0);
+}
+function chunkyText(t, x, y, size, fill, shadow, outline = '#0d0a14', depth = 8) {
+  o.font = `${size}px "Press Start 2P", monospace`; o.textAlign = 'center'; o.textBaseline = 'top';
+  for (let d = depth; d > 0; d -= 4) { o.fillStyle = shadow; o.fillText(t, x + d, y + d); }
+  o.fillStyle = outline;
+  for (const [dx, dy] of [[-4, 0], [4, 0], [0, -4], [0, 4], [-4, -4], [4, 4], [-4, 4], [4, -4]]) o.fillText(t, x + dx, y + dy);
+  o.fillStyle = fill; o.fillText(t, x, y);
+}
+
+document.fonts.load('40px "Press Start 2P"').catch(() => {}).then(() => {
+  vgrad(0, 470, .95, 0);
+  vgrad(880, 1280, 0, .96);
+
+  // top tag
+  o.fillStyle = '#ff3ea5'; o.fillRect(250, 44, 220, 36);
+  o.fillStyle = '#0d0a14'; o.fillRect(250, 80, 220, 4);
+  o.font = '14px "Press Start 2P", monospace'; o.textAlign = 'center'; o.textBaseline = 'top';
+  o.fillStyle = '#fff'; o.fillText('НОВАЯ ИГРА', 360, 55);
+
+  const grad = o.createLinearGradient(0, 110, 0, 330);
+  grad.addColorStop(0, '#fff3a0'); grad.addColorStop(.5, '#ffcc33'); grad.addColorStop(1, '#ff7a1a');
+  chunkyText('CITY', 360, 112, 104, grad, '#ff3ea5', '#0d0a14', 12);
+  chunkyText('HEAT', 360, 228, 104, grad, '#ff3ea5', '#0d0a14', 12);
+
+  o.font = '16px "Press Start 2P", monospace'; o.fillStyle = '#35e0ff';
+  o.fillText('ПИКСЕЛЬНЫЙ ГОРОД • ВИД СВЕРХУ', 360, 370);
+
+  // heat meter
+  o.font = '12px "Press Start 2P", monospace'; o.fillStyle = '#f4e9ff'; o.textAlign = 'right';
+  o.fillText('РОЗЫСК', 330, 410);
+  for (let i = 0; i < 5; i++) {
+    o.fillStyle = '#0d0a14'; o.fillRect(344 + i * 26, 404, 22, 24);
+    o.fillStyle = i < 3 ? '#ff2a3a' : '#3a2a44'; o.fillRect(348 + i * 26, 408, 14, 16);
+    if (i < 3) { o.fillStyle = '#ff8a90'; o.fillRect(348 + i * 26, 408, 14, 4); }
+  }
+  o.textAlign = 'center';
+
+  // bottom
+  o.font = '22px "Press Start 2P", monospace'; o.fillStyle = '#ffffff';
+  o.fillStyle = '#0d0a14'; o.fillText('УГОНЯЙ • УДИРАЙ • ВЫЖИВАЙ', 363, 1013);
+  o.fillStyle = '#fff'; o.fillText('УГОНЯЙ • УДИРАЙ • ВЫЖИВАЙ', 360, 1010);
+
+  // button
+  const bx = 190, by = 1072, bw = 340, bh = 92;
+  o.fillStyle = '#ff3ea5'; o.fillRect(bx + 10, by + 10, bw, bh);
+  o.fillStyle = '#0d0a14'; o.fillRect(bx - 6, by - 6, bw + 12, bh + 12);
+  o.fillStyle = '#ffcc33'; o.fillRect(bx, by, bw, bh);
+  o.fillStyle = '#fff3a0'; o.fillRect(bx, by, bw, 10);
+  o.fillStyle = '#d98f12'; o.fillRect(bx, by + bh - 10, bw, 10);
+  o.font = '34px "Press Start 2P", monospace'; o.fillStyle = '#1a1020'; o.fillText('ИГРАТЬ', 360, by + 30);
+
+  o.font = '14px "Press Start 2P", monospace'; o.fillStyle = '#b9a8d6';
+  o.fillText('СКОРО НА ПК', 360, 1210);
+});
+
+document.getElementById('dl').onclick = () => {
+  const a = document.createElement('a'); a.download = 'city_heat_promo_720x1280.png'; a.href = out.toDataURL('image/png'); a.click();
+};
+</script>
+</body>
+</html>
